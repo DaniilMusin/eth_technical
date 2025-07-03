@@ -161,85 +161,39 @@ class BalancedAdaptiveStrategy:
             # Cap leverage for ETH at 10x (was 5x)
             self.max_leverage = min(self.max_leverage, 10)
 
-    def load_data(self):
-        import numpy as np
-        print(f"Loading {self.symbol} data …")
-    
+    def load_data(self) -> Optional[pd.DataFrame]:
+        """Load data from CSV and standardize column names."""
+        if not self.data_path:
+            warnings.warn("data_path не задан, load_data() ничего не делает", RuntimeWarning)
+            return self.data
+
         df = pd.read_csv(self.data_path)
-    
-        # 1️⃣  Приводим имена колонок к стандарту
+
         rename_map = {
-            "open_time":  "Open time",
-            "Open time":  "Open time",   # если уже правильное – не изменится
-            "open":       "Open",
-            "high":       "High",
-            "low":        "Low",
-            "close":      "Close",
-            "volume":     "Volume"
+            "open_time": "Open time",
+            "open": "Open",
+            "high": "High",
+            "low": "Low",
+            "close": "Close",
+            "volume": "Volume",
         }
-        df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns},
-                  inplace=True)
-    
-        # 2️⃣  Преобразуем временную метку безопасно
-        col = "Open time"
-        if np.issubdtype(df[col].dtype, np.number):
-            # Если это число, определяем единицу измерения
-            ts_max = df[col].max()
-            if ts_max > 1e18:                 # наносекунды
-                df[col] = pd.to_datetime(df[col], unit="ns")
-            elif ts_max > 1e15:               # микросекунды
-                df[col] = pd.to_datetime(df[col], unit="us")
-            elif ts_max > 1e12:               # миллисекунды
-                df[col] = pd.to_datetime(df[col], unit="ms")
-            else:                             # секунды
-                df[col] = pd.to_datetime(df[col], unit="s")
+        df.rename(columns=rename_map, inplace=True)
+
+        if df["Open time"].dtype.kind in "iu":
+            df["Open time"] = pd.to_datetime(df["Open time"], unit="ms")
         else:
-            # строковый столбец – пробуем обычный парсер
-            df[col] = pd.to_datetime(df[col], errors="coerce")
-    
-        # 3️⃣  Ставим индекс и типизируем числовые колонки
-        df.set_index(col, inplace=True)
-        for c in ["Open", "High", "Low", "Close", "Volume"]:
-            df[c] = pd.to_numeric(df[c], errors="coerce")
-    
-        df.dropna(subset=["Open", "High", "Low", "Close", "Volume"], inplace=True)
-        self.data = df.tail(26_397)           # ~1 год 15‑минутных свечей
-        print(f"Loaded {len(self.data):,} candles for {self.symbol}")
+            df["Open time"] = pd.to_datetime(df["Open time"])
+
+        df.set_index("Open time", inplace=True)
+
+        for col in ["Open", "High", "Low", "Close", "Volume"]:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        df.dropna(inplace=True)
+        df = df.tail(26397)
+
+        self.data = df
         return self.data
-    
-    # def load_data(self) -> Optional[pd.DataFrame]:
-    #     """Load data from CSV and standardize column names."""
-    #     if not self.data_path:
-    #         warnings.warn("data_path не задан, load_data() ничего не делает", RuntimeWarning)
-    #         return self.data
-
-    #     df = pd.read_csv(self.data_path)
-
-    #     rename_map = {
-    #         "open_time": "Open time",
-    #         "open": "Open",
-    #         "high": "High",
-    #         "low": "Low",
-    #         "close": "Close",
-    #         "volume": "Volume",
-    #     }
-    #     df.rename(columns=rename_map, inplace=True)
-
-    #     if df["Open time"].dtype.kind in "iu":
-    #         df["Open time"] = pd.to_datetime(df["Open time"], unit="ms")
-    #     else:
-    #         df["Open time"] = pd.to_datetime(df["Open time"])
-
-    #     df.set_index("Open time", inplace=True)
-
-    #     for col in ["Open", "High", "Low", "Close", "Volume"]:
-    #         df[col] = pd.to_numeric(df[col], errors="coerce")
-
-    #     df.dropna(inplace=True)
-    #     df = df.tail(26397)
-
-    #     self.data = df
-    #     return self.data
     
     def validate_data(self) -> None:
         """
