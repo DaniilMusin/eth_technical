@@ -76,7 +76,7 @@ class StrategyConfig:
 
 class BalancedAdaptiveStrategy:
     def __init__(self, data_path: str,
-                 initial_balance: float = 1000, max_leverage: int = 3,
+                 initial_balance: float = 1000, max_leverage: int = 10,
                  base_risk_per_trade: float = 0.02,
                  min_trades_interval: int = 12,
                  symbol: str = "BTC"):
@@ -158,8 +158,8 @@ class BalancedAdaptiveStrategy:
             self.params['atr_multiplier_sl'] = 2.0
             self.params['atr_multiplier_tp'] = 5.0
             self.params['volume_threshold'] = 1.2
-            # Limit leverage to a more conservative level for ETH
-            self.max_leverage = min(self.max_leverage, 5)
+            # Cap leverage for ETH at 10x (was 5x)
+            self.max_leverage = min(self.max_leverage, 10)
     
     def load_data(self) -> Optional[pd.DataFrame]:
         """Load data from CSV and standardize column names."""
@@ -1278,7 +1278,7 @@ class BalancedAdaptiveStrategy:
         
         return None
 
-    def calculate_optimal_leverage(self, current_candle, trade_direction, max_allowed_leverage=3):
+    def calculate_optimal_leverage(self, current_candle, trade_direction, max_allowed_leverage=10):
         base_leverage = 2
         
         atr_ma = current_candle['ATR_MA'] if (not pd.isna(current_candle['ATR_MA']) and current_candle['ATR_MA'] != 0) else 1e-10
@@ -2561,7 +2561,7 @@ def main():
         data_path=data_path,
         symbol="ETH",
         initial_balance=1000,
-        max_leverage=3,
+        max_leverage=10,
         base_risk_per_trade=0.02,
         min_trades_interval=6
     )
