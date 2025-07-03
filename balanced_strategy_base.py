@@ -75,12 +75,14 @@ class StrategyConfig:
     adx_min_for_long: int = 22
 
 class BalancedAdaptiveStrategy:
-    def __init__(self, data_path: str, 
-                 initial_balance: float = 1000, max_leverage: int = 3, 
-                 base_risk_per_trade: float = 0.02, 
-                 min_trades_interval: int = 12):
-        """Initialization of balanced adaptive strategy for BTC futures trading"""
+    def __init__(self, data_path: str,
+                 initial_balance: float = 1000, max_leverage: int = 3,
+                 base_risk_per_trade: float = 0.02,
+                 min_trades_interval: int = 12,
+                 symbol: str = "BTC"):
+        """Initialization of balanced adaptive strategy for futures trading"""
         self.data_path = data_path
+        self.symbol = symbol.upper()
         self.initial_balance = initial_balance
         self.max_leverage = max_leverage
         self.base_risk_per_trade = base_risk_per_trade
@@ -140,6 +142,7 @@ class BalancedAdaptiveStrategy:
             'global_short_penalty': 0.90,
             'adx_min_for_long': 22,
         }
+        self._set_asset_defaults()
         self.data = pd.DataFrame()  # <-- live-режим: пустой DataFrame
         self.trade_history = []
         self.backtest_results = None
@@ -148,29 +151,47 @@ class BalancedAdaptiveStrategy:
         self.max_price_seen = 0
         self.min_price_seen = float('inf')
         self.current_side = None
+
+    def _set_asset_defaults(self) -> None:
+        """Adjust default parameters based on trading symbol."""
+        if self.symbol == "ETH":
+            self.params['atr_multiplier_sl'] = 2.0
+            self.params['atr_multiplier_tp'] = 5.0
+            self.params['volume_threshold'] = 1.2
+            # Limit leverage to a more conservative level for ETH
+            self.max_leverage = min(self.max_leverage, 5)
     
     def load_data(self) -> Optional[pd.DataFrame]:
-        """
-        Загружает данные из CSV, приводит индексы и имена колонок к нужному виду.
-        """
-        import warnings
+        """Load data from CSV and standardize column names."""
         if not self.data_path:
             warnings.warn("data_path не задан, load_data() ничего не делает", RuntimeWarning)
             return self.data
+
         df = pd.read_csv(self.data_path)
-        # Попытка найти колонку с датой
-        date_col = None
-        for col in ['Date', 'date', 'Open time', 'open_time', 'timestamp']:
-            if col in df.columns:
-                date_col = col
-                break
-        if date_col is None:
-            raise ValueError("Не найдена колонка с датой/временем в файле данных")
-        df[date_col] = pd.to_datetime(df[date_col])
-        df.set_index(date_col, inplace=True)
-        # Приводим имена колонок к Title Case (Open, High, Low, Close, Volume)
-        rename_map = {c: c.title() for c in df.columns}
+
+        rename_map = {
+            "open_time": "Open time",
+            "open": "Open",
+            "high": "High",
+            "low": "Low",
+            "close": "Close",
+            "volume": "Volume",
+        }
         df.rename(columns=rename_map, inplace=True)
+
+        if df["Open time"].dtype.kind in "iu":
+            df["Open time"] = pd.to_datetime(df["Open time"], unit="ms")
+        else:
+            df["Open time"] = pd.to_datetime(df["Open time"])
+
+        df.set_index("Open time", inplace=True)
+
+        for col in ["Open", "High", "Low", "Close", "Volume"]:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        df.dropna(inplace=True)
+        df = df.tail(26397)
+
         self.data = df
         return self.data
     
@@ -787,9 +808,18 @@ class BalancedAdaptiveStrategy:
         tr2 = (high - close.shift(1)).abs()
         tr3 = (low - close.shift(1)).abs()
         tr = pd.DataFrame({'tr1': tr1, 'tr2': tr2, 'tr3': tr3}).max(axis=1)
-        
+
         atr = tr.rolling(window=period).mean()
         return atr
+
+    def _auto_scale_volatility(self) -> None:
+        """Automatically scale ATR-related parameters based on recent volatility."""
+        atr = self._calculate_atr(self.data['High'], self.data['Low'], self.data['Close'], self.params['atr_period'])
+        atr_pct = (atr / self.data['Close']).rolling(2000).mean().iloc[-1]
+        if pd.notna(atr_pct) and atr_pct > 0:
+            scale = atr_pct / 0.02
+            self.params['atr_multiplier_sl'] *= scale
+            self.params['atr_multiplier_tp'] *= scale
     
     def _calculate_adx(self, high, low, close, period):
         tr1 = high - low
@@ -2525,29 +2555,19 @@ class BalancedAdaptiveStrategy:
 
 def main():
     """Main function to execute the strategy"""
-    import os
-    
-    base_dir = r"C:\Diploma\Pet"
-    csv_files = [f for f in os.listdir(base_dir) if f.endswith('.csv')]
-    
-    if not csv_files:
-        print(f"No CSV files found in {base_dir}. Please ensure your data file is in this directory.")
-        return
-    
-    data_file = csv_files[0]
-    data_path = os.path.join(base_dir, data_file)
-    
-    print(f"Using data file: {data_path}")
-    
+    data_path = "ETHUSDT-15m-2023-2024.csv"
+
     strategy = BalancedAdaptiveStrategy(
         data_path=data_path,
+        symbol="ETH",
         initial_balance=1000,
         max_leverage=3,
         base_risk_per_trade=0.02,
         min_trades_interval=6
     )
-    
+
     strategy.load_data()
+    strategy._auto_scale_volatility()
     strategy.calculate_indicators()
     strategy.run_backtest()
     stats = strategy.analyze_results()
