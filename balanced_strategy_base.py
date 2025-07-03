@@ -2555,7 +2555,8 @@ class BalancedAdaptiveStrategy:
 
 def main():
     """Main function to execute the strategy"""
-    data_path = "ETHUSDT-15m-2023-2024.csv"
+    # Use absolute path for the CSV file so the script works from any location
+    data_path = r"C:\programming\eth_technical\eth_technical\ETHUSDT-15m-2023-2024.csv"
 
     strategy = BalancedAdaptiveStrategy(
         data_path=data_path,
