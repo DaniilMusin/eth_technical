@@ -180,9 +180,11 @@ class BalancedAdaptiveStrategy:
         df.rename(columns=rename_map, inplace=True)
 
         if df["Open time"].dtype.kind in "iu":
-            df["Open time"] = pd.to_datetime(df["Open time"], unit="ms")
+            df["Open time"] = pd.to_datetime(df["Open time"], unit="ms", errors="coerce")
         else:
-            df["Open time"] = pd.to_datetime(df["Open time"])
+            df["Open time"] = pd.to_datetime(df["Open time"], errors="coerce")
+
+        df.dropna(subset=["Open time"], inplace=True)
 
         df.set_index("Open time", inplace=True)
 
