@@ -142,6 +142,7 @@ class BalancedAdaptiveStrategy:
             'global_short_penalty': 0.90,
             'adx_min_for_long': 22,
         }
+        self.min_trade_notional = 10
         self._set_asset_defaults()
         self.data = pd.DataFrame()  # <-- live-режим: пустой DataFrame
         self.trade_history = []
@@ -886,6 +887,10 @@ class BalancedAdaptiveStrategy:
         returns = np.log(eq_daily / eq_daily.shift(1)).dropna()
         return returns
 
+    def _round_position(self, size):
+        step = self.min_trade_notional
+        return max(step, np.floor(size / step) * step)
+
     def get_trading_signals(self, current, previous, regime_type):
         long_signals = []
         short_signals = []
@@ -1366,6 +1371,10 @@ class BalancedAdaptiveStrategy:
         min_pos = max(MIN_POSITION, balance * risk_per_trade / price_risk_pct) if price_risk_pct > 0 else MIN_POSITION
         position_size = max(base_position_size, min_pos)
         position_size = min(position_size, balance * optimal_leverage)
+        position_size = self._round_position(position_size)
+        if position_size < self.min_trade_notional:
+            print(f"Skip trade: pos {position_size:.2f} < min {self.min_trade_notional}")
+            return 0
         if position_size == min_pos and position_size > balance * optimal_leverage:
             warnings.warn(f"Position size {position_size:.2f} > max allowed {balance * optimal_leverage:.2f} по плечу! Ограничено сверху.")
         elif position_size == min_pos:
