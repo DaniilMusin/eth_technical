@@ -39,7 +39,7 @@ class StrategyConfig:
     atr_multiplier_tp: float = 7.0
     pyramid_size_multiplier: float = 0.7
     max_pyramid_entries: int = 3
-    pyramid_min_profit: float = 0.03
+    pyramid_min_profit: float = 0.01
     volume_ma_period: int = 20
     volume_threshold: float = 1.4
     trend_lookback: int = 20
@@ -107,7 +107,7 @@ class BalancedAdaptiveStrategy:
             'atr_multiplier_tp': 7.0,
             'pyramid_size_multiplier': 0.7,
             'max_pyramid_entries': 3,
-            'pyramid_min_profit': 0.03,
+            'pyramid_min_profit': 0.01,
             'volume_ma_period': 20,
             'volume_threshold': 1.4,
             'trend_lookback': 20,
@@ -1603,7 +1603,7 @@ class BalancedAdaptiveStrategy:
                     
                     if (pyramid_entries < self.params['max_pyramid_entries'] and 
                         current['Bullish_Trend'] and 
-                        current['ADX'] > 40 and 
+                        current['ADX'] > 25 and
                         current['Close'] > entry_price * (1 + self.params['pyramid_min_profit']) and
                         (current['MACD_Bullish_Cross'] or current['Final_Long_Bias'] > 0.7)):
                         
@@ -1750,8 +1750,8 @@ class BalancedAdaptiveStrategy:
                         continue
                     
                     if (pyramid_entries < self.params['max_pyramid_entries'] and 
-                        current['Bearish_Trend'] and 
-                        current['ADX'] > 40 and 
+                        current['Bearish_Trend'] and
+                        current['ADX'] > 25 and
                         current['Close'] < entry_price * (1 - self.params['pyramid_min_profit']) and
                         (current['MACD_Bearish_Cross'] or current['Final_Short_Bias'] > 0.7)):
                         
@@ -2017,9 +2017,9 @@ class BalancedAdaptiveStrategy:
             # --- Пирамидинг для LONG ---
             if (position == 1 and
                 pyramid_entries < self.params['max_pyramid_entries'] and 
-                current['Bullish_Trend'] and 
-                current['ADX'] > 30 and 
-                current['Close'] > entry_price * (1 + 0.02) and 
+                current['Bullish_Trend'] and
+                current['ADX'] > 25 and
+                current['Close'] > entry_price * (1 + self.params['pyramid_min_profit']) and
                 (current['MACD_Bullish_Cross'] or current['Final_Long_Bias'] > 0.65)):
                 additional_size = position_size * self.params['pyramid_size_multiplier']
                 old_value = entry_price * position_size
