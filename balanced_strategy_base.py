@@ -867,7 +867,15 @@ class BalancedAdaptiveStrategy:
             'MACD_Signal': macd_signal,
             'MACD_Hist': macd_hist
         }
-    
+
+    def _daily_returns_from_equity(self):
+        if 'equity' not in self.backtest_results.columns:
+            return pd.Series([], dtype=float)
+        eq = self.backtest_results.set_index('date')['equity']
+        eq_daily = eq.resample('1D').last().dropna()
+        returns = np.log(eq_daily / eq_daily.shift(1)).dropna()
+        return returns
+
     def get_trading_signals(self, current, previous, regime_type):
         long_signals = []
         short_signals = []
@@ -2326,22 +2334,16 @@ class BalancedAdaptiveStrategy:
         profit_sum = trades[trades['pnl'] > 0]['pnl'].sum()
         loss_sum = abs(trades[trades['pnl'] <= 0]['pnl'].sum())
         profit_factor = profit_sum / loss_sum if loss_sum > 0 else float('inf')
-        if 'equity' in self.backtest_results.columns:
-            # Считаем доходности по 15-минутным свечам
-            period_returns = self.backtest_results['equity'].pct_change().dropna()
-            if len(period_returns) > 0:
-                # Приведём к годовому значению: 15-минутных периодов в году = 4*24*365 = 35040
-                periods_per_year = 4 * 24 * 365
-                sharpe_ratio = (period_returns.mean() * periods_per_year) / (period_returns.std() * (periods_per_year ** 0.5)) if period_returns.std() > 0 else 0
-                negative_returns = period_returns[period_returns < 0]
-                downside_deviation = negative_returns.std() * (periods_per_year ** 0.5) if len(negative_returns) > 0 else 1e-10
-                sortino_ratio = (period_returns.mean() * periods_per_year) / downside_deviation
-            else:
-                sharpe_ratio = 0
-                sortino_ratio = 0
+
+        daily_ret = self._daily_returns_from_equity()
+        if not daily_ret.empty:
+            sharpe = (daily_ret.mean() / daily_ret.std()) * np.sqrt(252)
+            downside = daily_ret[daily_ret < 0].std() * np.sqrt(252)
+            sortino = (daily_ret.mean() / downside) * np.sqrt(252) if downside > 0 else np.nan
         else:
-            sharpe_ratio = 0
-            sortino_ratio = 0
+            sharpe = sortino = np.nan
+        sharpe_ratio = sharpe
+        sortino_ratio = sortino
         if 'trade_duration' in trades.columns:
             median_duration_hours = trades['trade_duration'].median()
         else:
