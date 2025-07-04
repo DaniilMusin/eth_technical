@@ -6,6 +6,8 @@ from matplotlib.ticker import FuncFormatter
 from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore', category=pd.errors.SettingWithCopyWarning)  # (3) Точечная фильтрация
+warnings.filterwarnings('ignore', category=FutureWarning)  # Игнорируем FutureWarning
+warnings.filterwarnings('ignore', category=pd.errors.PerformanceWarning)  # Игнорируем PerformanceWarning
 import logging
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
@@ -138,8 +140,8 @@ class BalancedAdaptiveStrategy:
             'long_entry_threshold': 0.65,
             'short_entry_threshold': 0.7,
             'min_trades_interval': 12,
-            'global_long_boost': 1.10,
-            'global_short_penalty': 0.90,
+            'global_long_boost': 1.15,  # Увеличиваем буст для лонгов
+            'global_short_penalty': 0.70,  # Сильнее ограничиваем шорты
             'adx_min_for_long': 22,
         }
         self.min_trade_notional = 10
@@ -1194,6 +1196,26 @@ class BalancedAdaptiveStrategy:
         
         # --- Apply global short penalty ---
         short_weight *= self.params['global_short_penalty']  # Применяем только один раз!
+        
+        # --- Дополнительные фильтры для шортов из-за их плохой производительности ---
+        if current['Higher_TF_Bullish']:
+            short_weight *= 0.2  # Почти полностью блокируем шорты в бычьем тренде
+        
+        # Блокируем шорты при сильном объеме роста
+        if current['Volume_Ratio'] > 1.5 and current['Close'] > current['Open']:
+            short_weight *= 0.3
+        
+        # Дополнительная фильтрация по market health для обеих сторон
+        if 'Market_Health' in current:
+            health = current['Market_Health']
+            # В плохих условиях (health < 40) снижаем активность
+            if health < 40:
+                long_weight *= 0.7
+                short_weight *= 0.5
+            # В отличных условиях (health > 80) часто ложные сигналы - осторожнее
+            elif health > 80:
+                long_weight *= 0.8
+                short_weight *= 0.3
         # --- Apply global long boost ---
         long_weight  *= self.params['global_long_boost']
         # если дневная EMA-50 > EMA-200 и цена выше EMA-50 +- 0.5 % → почти не шортим
@@ -1219,16 +1241,16 @@ class BalancedAdaptiveStrategy:
         # --- Volatility scaling for SL/TP ---
         atr_ma = current_candle['ATR_MA'] if ('ATR_MA' in current_candle and not pd.isna(current_candle['ATR_MA']) and current_candle['ATR_MA'] != 0) else 1e-10
         vol_ratio = current_candle['ATR'] / atr_ma
-        # Table-based multipliers
+        # Table-based multipliers - делаем более консервативными
         if vol_ratio < 0.8:
-            sl_multiplier = 1.8
-            tp_multiplier = 5.5
+            sl_multiplier = 1.5  # Уменьшаем SL
+            tp_multiplier = 4.0  # Уменьшаем TP для лучшего R/R
         elif vol_ratio < 1.5:
-            sl_multiplier = 2.3
-            tp_multiplier = 6.5
+            sl_multiplier = 1.8
+            tp_multiplier = 4.5
         else:
-            sl_multiplier = 3.0
-            tp_multiplier = 8.0
+            sl_multiplier = 2.2
+            tp_multiplier = 5.5
         # --- Regime/age adjustments as before ---
         if 'Market_Regime' in current_candle:
             regime = current_candle['Market_Regime']
@@ -1708,7 +1730,19 @@ class BalancedAdaptiveStrategy:
                     if 'Final_Short_Bias' in current and current['Final_Short_Bias'] > 0.7 and unrealized_pnl_pct > 0.03:
                         exit_signals.append('Bias Shift')
                     
-                    if exit_signals and trade_age_hours > 4:
+                    # Более агрессивные выходы для улучшения производительности
+                    early_exit = False
+                    # Быстрый выход при убытках
+                    if unrealized_pnl_pct < -0.03 and trade_age_hours > 2:
+                        early_exit = True
+                        exit_signals.append('Early Loss Cut')
+                    
+                    # Фиксация быстрой прибыли для нестабильных сигналов
+                    if unrealized_pnl_pct > 0.05 and trade_age_hours > 1:
+                        early_exit = True  
+                        exit_signals.append('Quick Profit Take')
+                    
+                    if (exit_signals and trade_age_hours > 4) or early_exit:
                         pnl = self._close_position('LONG', position_size, entry_price, current['Close'])
                         balance += pnl
                         
@@ -1856,7 +1890,19 @@ class BalancedAdaptiveStrategy:
                     if 'Final_Long_Bias' in current and current['Final_Long_Bias'] > 0.7 and unrealized_pnl_pct > 0.03:
                         exit_signals.append('Bias Shift')
                     
-                    if exit_signals and trade_age_hours > 4:
+                    # Более агрессивные выходы для SHORT позиций (у них хуже производительность)
+                    early_exit = False
+                    # Очень быстрый выход при убытках для шортов
+                    if unrealized_pnl_pct < -0.02 and trade_age_hours > 1:
+                        early_exit = True
+                        exit_signals.append('Early Loss Cut Short')
+                    
+                    # Быстрая фиксация прибыли для шортов
+                    if unrealized_pnl_pct > 0.03 and trade_age_hours > 0.5:
+                        early_exit = True  
+                        exit_signals.append('Quick Profit Take Short')
+                    
+                    if (exit_signals and trade_age_hours > 4) or early_exit:
                         pnl = self._close_position('SHORT', position_size, entry_price, current['Close'])
                         balance += pnl
                         
@@ -1907,8 +1953,8 @@ class BalancedAdaptiveStrategy:
                 min_signal_threshold = 0.7  # Было 0.6, стало 0.7
                 
                 # --- ENTRY LOGIC ---
-                long_entry_threshold = 0.60
-                short_entry_threshold = 0.60
+                long_entry_threshold = 0.75  # Повышаем пороги для более качественных сигналов
+                short_entry_threshold = 0.85  # Еще выше для шортов из-за их плохой производительности
                 # --- Volatility adjustment ---
                 volatility_adjustment = current['ATR'] / current['ATR_MA'] if current['ATR_MA'] else 1
                 if volatility_adjustment > 1.2:
@@ -2597,15 +2643,15 @@ class BalancedAdaptiveStrategy:
 def main():
     """Main function to execute the strategy"""
     # Use absolute path for the CSV file so the script works from any location
-    data_path = r"C:\programming\eth_technical\eth_technical\ETHUSDT-15m-2023-2024.csv"
+    data_path = r"C:\programming\eth_technical\eth_technical\ETHUSDT-15m-2018-2025.csv"
 
     strategy = BalancedAdaptiveStrategy(
         data_path=data_path,
         symbol="ETH",
         initial_balance=1000,
         max_leverage=10,
-        base_risk_per_trade=0.02,
-        min_trades_interval=6
+        base_risk_per_trade=0.015,  # Снижаем риск для лучшего управления капиталом
+        min_trades_interval=12  # Увеличиваем интервал для снижения частоты торговли
     )
 
     strategy.load_data()
