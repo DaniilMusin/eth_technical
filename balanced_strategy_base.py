@@ -650,12 +650,22 @@ class BalancedAdaptiveStrategy:
         bb_position = bb_position.replace([np.inf, -np.inf], np.nan).fillna(0.5)
         self.data['Support_Resistance_Health'] = (0.5 - abs(bb_position - 0.5)) * 2 * 20
         
+        cols = ['Trend_Health', 'Volatility_Health', 'Volume_Health',
+                'Breadth_Health', 'Support_Resistance_Health']
+        for col in cols:
+            self.data[col] = 100 * (
+                self.data[col] - self.data[col].rolling(500).min()
+            ) / (
+                self.data[col].rolling(500).max()
+                - self.data[col].rolling(500).min()
+            ).replace(0, 1e-10)
+
         self.data['Market_Health'] = (
-            self.data['Trend_Health'] * self.params['health_trend_weight'] + 
-            self.data['Volatility_Health'] * self.params['health_volatility_weight'] + 
-            self.data['Volume_Health'] * self.params['health_volume_weight'] + 
-            self.data['Breadth_Health'] * self.params['health_breadth_weight'] + 
-            self.data['Support_Resistance_Health'] * self.params['health_sr_weight']
+            self.data['Trend_Health'] * 0.25 +
+            self.data['Volatility_Health'] * 0.20 +
+            self.data['Volume_Health'] * 0.15 +
+            self.data['Breadth_Health'] * 0.25 +
+            self.data['Support_Resistance_Health'] * 0.15
         ).clip(0, 100)
         
         self.data['Health_Long_Bias'] = self.data['Market_Health'] / 100
