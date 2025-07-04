@@ -1222,9 +1222,17 @@ class BalancedAdaptiveStrategy:
         atr_value = current_candle['ATR']
         if position_type == 'LONG':
             stop_loss = entry_price * (1 - atr_value * sl_multiplier / entry_price)
-            take_profit = entry_price * (1 + atr_value * tp_multiplier / entry_price)
         else:
             stop_loss = entry_price * (1 + atr_value * sl_multiplier / entry_price)
+
+        # Adjust TP if stop-loss is relatively tight compared to ATR
+        sl_pct = abs(entry_price - stop_loss) / entry_price
+        if sl_pct < 1.1 * atr_value / entry_price:
+            tp_multiplier *= 1.15
+
+        if position_type == 'LONG':
+            take_profit = entry_price * (1 + atr_value * tp_multiplier / entry_price)
+        else:
             take_profit = entry_price * (1 - atr_value * tp_multiplier / entry_price)
         if 'Range_Weight' in current_candle and current_candle['Range_Weight'] > 0.7:
             if position_type == 'LONG' and current_candle['BB_Upper'] < take_profit:
@@ -1243,6 +1251,12 @@ class BalancedAdaptiveStrategy:
                 take_profit = entry_price + (risk * 2.0)
             else:
                 take_profit = entry_price - (risk * 2.0)
+        # record relative SL and ATR sizes for debugging
+        self.debug_sl_atr = getattr(self, 'debug_sl_atr', [])
+        self.debug_sl_atr.append({
+            'sl_pct': abs(entry_price - stop_loss) / entry_price,
+            'atr_pct': atr_value / entry_price
+        })
         return {
             'stop_loss': stop_loss,
             'take_profit': take_profit
@@ -2462,6 +2476,10 @@ class BalancedAdaptiveStrategy:
         if 'risk_per_trade' in trades.columns:
             avg_risk = trades['risk_per_trade'].mean() * 100
             print(f"Average Risk per Trade: {avg_risk:.2f}%")
+        if hasattr(self, 'debug_sl_atr'):
+            df_sl = pd.DataFrame(self.debug_sl_atr)
+            ratio = (df_sl['sl_pct'] / df_sl['atr_pct']).mean()
+            print(f"\n\u0421\u0440\u0435\u0434\u043d\u0438\u0439 SL/ATR = {ratio:.2f}")
         self.calculate_correlation_metrics()
         stats = {
             'initial_balance': initial_balance,
