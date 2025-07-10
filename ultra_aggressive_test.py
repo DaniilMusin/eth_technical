@@ -13,7 +13,7 @@ def test_ultra_aggressive_config(config_name, **kwargs):
     """Тестирует ультра-агрессивную конфигурацию"""
     
     default_params = {
-        'data_path': r"C:\programming\eth_technical\eth_technical\ETHUSDT-15m-2018-2025.csv",
+        'data_path': "ETHUSDT-15m-2018-2025.csv",
         'symbol': "ETH",
         'initial_balance': 1000,
         'max_leverage': 20,

@@ -1546,25 +1546,41 @@ class BalancedAdaptiveStrategy:
             strategy_returns = strategy_returns.iloc[:min_length]
             benchmark_returns = self.data['Benchmark_Return'].iloc[:min_length]
             
-            rolling_corr = strategy_returns.rolling(window).corr(benchmark_returns)
-            autocorr = pd.Series(
-                [strategy_returns.autocorr(lag=i) for i in range(1, 11)],
-                index=[f'lag_{i}' for i in range(1, 11)]
-            )
-            
+            if len(strategy_returns) > window and not strategy_returns.isnull().all():
+                rolling_corr = strategy_returns.rolling(window).corr(benchmark_returns)
+                autocorr = pd.Series(
+                    [strategy_returns.autocorr(lag=i) for i in range(1, 11)],
+                    index=[f'lag_{i}' for i in range(1, 11)]
+                )
+                
+                print("\n===== CORRELATION METRICS =====")
+                avg_corr = rolling_corr.dropna().mean() if not rolling_corr.dropna().empty else np.nan
+                if pd.isna(avg_corr):
+                    print("Average correlation with BTC price: nan")
+                else:
+                    print(f"Average correlation with BTC price: {avg_corr:.4f}")
+                print("Strategy autocorrelation:")
+                for lag, value in autocorr.items():
+                    if pd.isna(value):
+                        print(f"  {lag}: nan")
+                    else:
+                        print(f"  {lag}: {value:.4f}")
+                
+                if not pd.isna(avg_corr):
+                    if abs(avg_corr) < 0.3:
+                        print("Strategy shows low correlation with BTC price, suggesting market-neutral characteristics")
+                    elif avg_corr > 0.7:
+                        print("Strategy is highly correlated with BTC price, may struggle in bear markets")
+                    elif avg_corr < -0.7:
+                        print("Strategy is highly negatively correlated with BTC price, may struggle in bull markets")
+            else:
+                print("\n===== CORRELATION METRICS =====")
+                print("Average correlation with BTC price: nan")
+                print("Strategy autocorrelation: insufficient data")
+        else:
             print("\n===== CORRELATION METRICS =====")
-            avg_corr = rolling_corr.dropna().mean()  # (2) Исправление NaN
-            print(f"Average correlation with BTC price: {avg_corr:.4f}")
-            print("Strategy autocorrelation:")
-            for lag, value in autocorr.items():
-                print(f"  {lag}: {value:.4f}")
-            
-            if abs(avg_corr) < 0.3:
-                print("Strategy shows low correlation with BTC price, suggesting market-neutral characteristics")
-            elif avg_corr > 0.7:
-                print("Strategy is highly correlated with BTC price, may struggle in bear markets")
-            elif avg_corr < -0.7:
-                print("Strategy is highly negatively correlated with BTC price, may struggle in bull markets")
+            print("Average correlation with BTC price: nan")
+            print("Strategy autocorrelation: no backtest data available")
 
     def run_backtest(self) -> Optional[pd.DataFrame]:
         """Run the backtest and return results DataFrame"""
@@ -2420,7 +2436,8 @@ class BalancedAdaptiveStrategy:
             downside = daily_ret[daily_ret < 0].std() * np.sqrt(252)
             sortino = (daily_ret.mean() / downside) * np.sqrt(252) if downside > 0 else np.nan
         else:
-            sharpe = sortino = np.nan
+            sharpe = np.nan
+            sortino = np.nan
         sharpe_ratio = sharpe
         sortino_ratio = sortino
         if 'trade_duration' in trades.columns:
@@ -2643,7 +2660,7 @@ class BalancedAdaptiveStrategy:
 def main():
     """Main function to execute the strategy"""
     # Use absolute path for the CSV file so the script works from any location
-    data_path = r"C:\programming\eth_technical\eth_technical\ETHUSDT-15m-2018-2025.csv"
+    data_path = "ETHUSDT-15m-2018-2025.csv"
 
     strategy = BalancedAdaptiveStrategy(
         data_path=data_path,
