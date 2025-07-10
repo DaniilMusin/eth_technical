@@ -23,7 +23,7 @@ def run_best_strategy():
     
     # Создаем стратегию с лучшими параметрами
     strategy = BalancedAdaptiveStrategy(
-        data_path=r"C:\programming\eth_technical\eth_technical\ETHUSDT-15m-2018-2025.csv",
+        data_path="ETHUSDT-15m-2018-2025.csv",
         symbol="ETH",
         initial_balance=1000,
         max_leverage=14,                # Умеренное плечо
