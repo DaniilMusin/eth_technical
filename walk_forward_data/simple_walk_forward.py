@@ -41,7 +41,11 @@ class SimpleWalkForwardTester:
         
         # Конвертируем время
         if df["timestamp"].dtype.kind in "iu":
-            df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", errors="coerce")
+            if df["timestamp"].max() < 1e12:
+                # Likely seconds
+                df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s", errors="coerce")
+            else:
+                df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", errors="coerce")
         else:
             df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
         
@@ -220,11 +224,13 @@ class SimpleWalkForwardTester:
         if pnl_trades:
             winning_trades = [t for t in pnl_trades if t['pnl'] > 0]
             win_rate = len(winning_trades) / len(pnl_trades) * 100
-            
             if len(winning_trades) > 0 and len(pnl_trades) > len(winning_trades):
                 avg_win = np.mean([t['pnl'] for t in winning_trades])
                 avg_loss = np.mean([t['pnl'] for t in pnl_trades if t['pnl'] <= 0])
-                profit_factor = abs(avg_win * len(winning_trades)) / abs(avg_loss * (len(pnl_trades) - len(winning_trades)))
+                if avg_loss == 0:
+                    profit_factor = 1.0 if total_return > 0 else 0.5
+                else:
+                    profit_factor = abs(avg_win * len(winning_trades)) / abs(avg_loss * (len(pnl_trades) - len(winning_trades)))
             else:
                 profit_factor = 1.0 if total_return > 0 else 0.5
         else:
