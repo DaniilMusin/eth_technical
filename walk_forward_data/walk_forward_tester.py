@@ -114,7 +114,11 @@ class WalkForwardTester:
         
         # Конвертируем время
         if df["Open time"].dtype.kind in "iu":
-            df["Open time"] = pd.to_datetime(df["Open time"], unit="ms", errors="coerce")
+            if df["Open time"].max() < 1e12:
+                # Likely seconds
+                df["Open time"] = pd.to_datetime(df["Open time"], unit="s", errors="coerce")
+            else:
+                df["Open time"] = pd.to_datetime(df["Open time"], unit="ms", errors="coerce")
         else:
             df["Open time"] = pd.to_datetime(df["Open time"], errors="coerce")
         
@@ -199,8 +203,13 @@ class WalkForwardTester:
                 "Close": "close",
                 "Volume": "volume"
             }, inplace=True)
-            # Конвертируем время обратно в timestamp
-            df_save['open_time'] = df_save['open_time'].astype('int64') // 10**6
+            # Detect timestamp unit (ms or s)
+            if df_save['open_time'].max() < 1e12:
+                # Likely seconds, convert to ms
+                df_save['open_time'] = (pd.to_datetime(df_save['open_time']).astype('int64') // 10**6)
+            else:
+                # Already ms or higher
+                df_save['open_time'] = df_save['open_time'].astype('int64') // 10**6
             return df_save
         
         prepare_for_save(train_data).to_csv(train_path, index=False)
@@ -488,7 +497,10 @@ class WalkForwardTester:
         print(f"📊 Bitcoin: ~{btc_annual}% годовых ({'превосходим' if annual_return > btc_annual else 'уступаем'} в {abs(annual_return/btc_annual):.1f}x раз)")
         
         # Стабильность результатов
-        consistency_score = stats['profitable_periods_pct'] * (1 - stats['std_monthly_return'] / abs(stats['avg_monthly_return']))
+        if stats['avg_monthly_return'] != 0:
+            consistency_score = stats['profitable_periods_pct'] * (1 - stats['std_monthly_return'] / abs(stats['avg_monthly_return']))
+        else:
+            consistency_score = 0
         print(f"\n🎯 ОЦЕНКА СТАБИЛЬНОСТИ:")
         print(f"📊 Индекс стабильности: {consistency_score:.1f}/100")
         

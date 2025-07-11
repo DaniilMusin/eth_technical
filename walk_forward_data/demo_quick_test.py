@@ -123,13 +123,17 @@ def simple_strategy_test(data):
     # Симуляция торговли
     balance = 10000
     position = 0
+    entry_price = None
     trades = []
     
     for i in range(len(data)):
         if data['Long_Signal'].iloc[i] and position <= 0:
-            if position < 0:
+            if position < 0 and entry_price is not None:
                 # Закрываем шорт
-                pnl = (data['Close'].iloc[i-1] - data['Close'].iloc[i]) / data['Close'].iloc[i-1] * abs(position)
+                if entry_price != 0:
+                    pnl = (entry_price - data['Close'].iloc[i]) / entry_price * abs(position)
+                else:
+                    pnl = 0
                 balance += pnl
                 trades.append({'type': 'close_short', 'pnl': pnl})
             
@@ -139,9 +143,12 @@ def simple_strategy_test(data):
             trades.append({'type': 'open_long', 'price': entry_price})
             
         elif data['Short_Signal'].iloc[i] and position >= 0:
-            if position > 0:
+            if position > 0 and entry_price is not None:
                 # Закрываем лонг
-                pnl = (data['Close'].iloc[i] - entry_price) / entry_price * position
+                if entry_price != 0:
+                    pnl = (data['Close'].iloc[i] - entry_price) / entry_price * position
+                else:
+                    pnl = 0
                 balance += pnl
                 trades.append({'type': 'close_long', 'pnl': pnl})
             
