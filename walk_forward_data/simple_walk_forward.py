@@ -42,9 +42,10 @@ class SimpleWalkForwardTester:
         # Конвертируем время
         if df["timestamp"].dtype.kind in "iu":
             if df["timestamp"].max() < 1e12:
-                # Likely seconds
+                # Likely seconds, convert to milliseconds
                 df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s", errors="coerce")
             else:
+                # Likely milliseconds
                 df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", errors="coerce")
         else:
             df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")

@@ -183,7 +183,13 @@ class BalancedAdaptiveStrategy:
         df.rename(columns=rename_map, inplace=True)
 
         if df["Open time"].dtype.kind in "iu":
-            df["Open time"] = pd.to_datetime(df["Open time"], unit="ms", errors="coerce")
+            # Check if timestamp is in seconds or milliseconds
+            if df["Open time"].max() < 1e12:
+                # Likely seconds
+                df["Open time"] = pd.to_datetime(df["Open time"], unit="s", errors="coerce")
+            else:
+                # Likely milliseconds
+                df["Open time"] = pd.to_datetime(df["Open time"], unit="ms", errors="coerce")
         else:
             df["Open time"] = pd.to_datetime(df["Open time"], errors="coerce")
 
