@@ -203,13 +203,8 @@ class WalkForwardTester:
                 "Close": "close",
                 "Volume": "volume"
             }, inplace=True)
-            # Detect timestamp unit (ms or s)
-            if df_save['open_time'].max() < 1e12:
-                # Likely seconds, convert to ms
-                df_save['open_time'] = (pd.to_datetime(df_save['open_time']).astype('int64') // 10**6)
-            else:
-                # Already ms or higher
-                df_save['open_time'] = df_save['open_time'].astype('int64') // 10**6
+            # Convert datetime back to timestamp (milliseconds)
+            df_save['open_time'] = (pd.to_datetime(df_save['open_time']).astype('int64') // 10**6)
             return df_save
         
         prepare_for_save(train_data).to_csv(train_path, index=False)

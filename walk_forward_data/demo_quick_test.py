@@ -37,7 +37,13 @@ def load_data(file_path):
     
     # Конвертируем время
     if df["Open time"].dtype.kind in "iu":
-        df["Open time"] = pd.to_datetime(df["Open time"], unit="ms", errors="coerce")
+        # Check if timestamp is in seconds or milliseconds
+        if df["Open time"].max() < 1e12:
+            # Likely seconds
+            df["Open time"] = pd.to_datetime(df["Open time"], unit="s", errors="coerce")
+        else:
+            # Likely milliseconds
+            df["Open time"] = pd.to_datetime(df["Open time"], unit="ms", errors="coerce")
     else:
         df["Open time"] = pd.to_datetime(df["Open time"], errors="coerce")
     
@@ -128,14 +134,15 @@ def simple_strategy_test(data):
     
     for i in range(len(data)):
         if data['Long_Signal'].iloc[i] and position <= 0:
-            if position < 0 and entry_price is not None:
+            if position < 0 and entry_price is not None and entry_price != 0:
                 # Закрываем шорт
-                if entry_price != 0:
-                    pnl = (entry_price - data['Close'].iloc[i]) / entry_price * abs(position)
-                else:
-                    pnl = 0
+                pnl = (entry_price - data['Close'].iloc[i]) / entry_price * abs(position)
                 balance += pnl
                 trades.append({'type': 'close_short', 'pnl': pnl})
+            elif position < 0:
+                # entry_price is 0 or None, can't calculate PnL
+                position = 0
+                entry_price = None
             
             # Открываем лонг
             position = balance * 0.1  # 10% от баланса
@@ -143,14 +150,15 @@ def simple_strategy_test(data):
             trades.append({'type': 'open_long', 'price': entry_price})
             
         elif data['Short_Signal'].iloc[i] and position >= 0:
-            if position > 0 and entry_price is not None:
+            if position > 0 and entry_price is not None and entry_price != 0:
                 # Закрываем лонг
-                if entry_price != 0:
-                    pnl = (data['Close'].iloc[i] - entry_price) / entry_price * position
-                else:
-                    pnl = 0
+                pnl = (data['Close'].iloc[i] - entry_price) / entry_price * position
                 balance += pnl
                 trades.append({'type': 'close_long', 'pnl': pnl})
+            elif position > 0:
+                # entry_price is 0 or None, can't calculate PnL
+                position = 0
+                entry_price = None
             
             # Открываем шорт
             position = -balance * 0.1  # 10% от баланса
